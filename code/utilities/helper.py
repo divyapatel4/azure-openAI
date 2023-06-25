@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 import logging
 import re
 import hashlib
-
+import numpy as np
+import difflib
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.llms import AzureOpenAI
 from langchain.vectorstores.base import VectorStore
@@ -27,31 +28,11 @@ from utilities.blobstorage import AzureBlobStorageClient
 from utilities.customprompt import PROMPT, SMES_PROMPT
 from utilities.redis import RedisExtended
 from utilities.vectorsearch import AzureSearch, AzureSearchVectorStoreRetriever
-
+from utilities.similarities import SentenceSimilarityComparator
 import pandas as pd
 import urllib
 
 from fake_useragent import UserAgent
-
-# def extract_outermost_brackets(s):
-#     s = re.sub(r'\(.*?\)', '', s)
-#     count = 0;start = 0; end = 0;inside = False;result = [];
-#     for i in range(len(s)):
-#         if s[i] == '[' and inside == False:
-#             start = i
-#             inside = True
-#             count += 1
-#         elif s[i] == '[' and inside == True:
-#             count += 1
-#         elif s[i] == ']' and inside == True:
-#             count -= 1
-#             if count == 0:
-#                 end = i
-#                 substring = s[start+1:end]
-#                 substring = substring.split('documents/',1)[1]
-#                 result.append(substring)
-#                 inside = False
-#     return result
 
 
 class LLMHelper:
@@ -91,21 +72,8 @@ class LLMHelper:
         self.vector_store_type = os.getenv("VECTOR_STORE_TYPE")
 
         # Azure Search settings
-        if  self.vector_store_type == "AzureSearch":
-            self.vector_store_address: str = os.getenv('AZURE_SEARCH_SERVICE_NAME')
-            self.vector_store_password: str = os.getenv('AZURE_SEARCH_ADMIN_KEY')
-
-        else:
-            # Vector store settings
-            self.vector_store_address: str = os.getenv('REDIS_ADDRESS', "localhost")
-            self.vector_store_port: int= int(os.getenv('REDIS_PORT', 6379))
-            self.vector_store_protocol: str = os.getenv("REDIS_PROTOCOL", "redis://")
-            self.vector_store_password: str = os.getenv("REDIS_PASSWORD", None)
-
-            if self.vector_store_password:
-                self.vector_store_full_address = f"{self.vector_store_protocol}:{self.vector_store_password}@{self.vector_store_address}:{self.vector_store_port}"
-            else:
-                self.vector_store_full_address = f"{self.vector_store_protocol}{self.vector_store_address}:{self.vector_store_port}"
+        self.vector_store_address: str = os.getenv('AZURE_SEARCH_SERVICE_NAME')
+        self.vector_store_password: str = os.getenv('AZURE_SEARCH_ADMIN_KEY')
 
         self.chunk_size = int(os.getenv('CHUNK_SIZE', 2000))
         self.chunk_overlap = int(os.getenv('CHUNK_OVERLAP', 500))
@@ -116,6 +84,7 @@ class LLMHelper:
         self.document_loaders: BaseLoader = WebBaseLoader if document_loaders is None else document_loaders
         self.text_splitter: TextSplitter = TokenTextSplitter(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap) if text_splitter is None else text_splitter
         self.embeddings: OpenAIEmbeddings = OpenAIEmbeddings(model=self.model, chunk_size=1) if embeddings is None else embeddings
+        self.comparator: SentenceSimilarityComparator = SentenceSimilarityComparator()
         
         if self.deployment_type == "Chat":
             self.llm: ChatOpenAI = ChatOpenAI(model_name=self.deployment_name, engine=self.deployment_name, temperature=self.temperature, max_tokens=self.max_tokens if self.max_tokens != -1 else None) if llm is None else llm
@@ -241,7 +210,7 @@ class LLMHelper:
         
         self.prompt = PROMPT
         
-        doc_chain = load_qa_with_sources_chain(self.llm, chain_type="stuff", verbose=True, prompt=self.prompt)
+        doc_chain = load_qa_with_sources_chain(self.llm, chain_type="stuff", verbose=False, prompt=self.prompt)
         chain = ConversationalRetrievalChain(
             retriever=self.vector_store.as_retriever(search_kwargs = {"k": k}),
             question_generator=question_generator,
@@ -250,6 +219,8 @@ class LLMHelper:
         )
         result = chain({"question": question, "chat_history": chat_history})
         context = "\n".join(list(map(lambda x: x.page_content, result['source_documents'])))
+        
+        context_list_sources = list(map(lambda x: x.metadata['source'], result['source_documents']))
         
         
         result['answer'] = result['answer'].split('SOURCES:')[0].split('Sources:')[0].split('SOURCE:')[0].split('Source:')[0].split('source:')[0].split('sources:')[0].split('SOURCE')[0].split('Source')[0]
@@ -274,8 +245,10 @@ class LLMHelper:
             
             
         self.blob_client.add_to_table(index, question, result['answer'], self.temperature)
+        
+        similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
             
-        return question, result['answer'], context, final_sources
+        return question, result['answer'], context, final_sources , similarity_scores
 
 
     def get_semantic_answer_lang_chain_exp(self, question,index, chat_history):
@@ -297,7 +270,7 @@ class LLMHelper:
         
         question_generator = LLMChain(llm=self.llm, prompt=CONDENSE_QUESTION_PROMPT, verbose=False)
         
-        doc_chain = load_qa_with_sources_chain(self.llm, chain_type="stuff", verbose=True, prompt=self.prompt)
+        doc_chain = load_qa_with_sources_chain(self.llm, chain_type="stuff", verbose=False, prompt=self.prompt)
         chain = ConversationalRetrievalChain(
             retriever=Retriever,
             # retriever=self.vector_store.as_retriever(),
@@ -307,6 +280,8 @@ class LLMHelper:
         )
         result = chain({"question": question, "chat_history": chat_history})
         context = "\n".join(list(map(lambda x: x.page_content, result['source_documents'])))
+        
+        context_list_sources = list(map(lambda x: x.metadata['source'], result['source_documents']))
         
         
         result['answer'] = result['answer'].split('SOURCES:')[0].split('Sources:')[0].split('SOURCE:')[0].split('Source:')[0].split('source:')[0].split('sources:')[0].split('SOURCE')[0].split('Source')[0]
@@ -331,8 +306,10 @@ class LLMHelper:
         
         # only keep unique entries in final_sources
         final_sources = [dict(t) for t in {tuple(d.items()) for d in final_sources}]
+        
+        similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
             
-        return question, result['answer'], context, final_sources
+        return question, result['answer'], context, final_sources, similarity_scores
 
 
     def get_embeddings_model(self):
@@ -342,4 +319,3 @@ class LLMHelper:
             "doc": OPENAI_EMBEDDINGS_ENGINE_DOC,
             "query": OPENAI_EMBEDDINGS_ENGINE_QUERY
         }
-

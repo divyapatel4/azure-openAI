@@ -50,7 +50,6 @@ login_token = msal_authentication(
 
 
 if login_token is not None:  # Only execute the app if the user is authenticated
-    print(login_token)
     member_of_sust = False
     
     if login_token['account']['username'] in list_access:
@@ -99,7 +98,8 @@ if login_token is not None:  # Only execute the app if the user is authenticated
 
             if (search_button or question != st.session_state['question']) and question != "":
                 st.session_state['question'] = question
-                st.session_state['question'], st.session_state['response'], st.session_state['context'], sources = llm_helper.get_semantic_answer_lang_chain_exp(question , search_index, [])
+                st.session_state['question'], st.session_state['response'], st.session_state['context'], sources, referencelines = llm_helper.get_semantic_answer_lang_chain_exp(question , search_index, [])
+                print(referencelines)
                 st.markdown("###### Answer:") 
                 st.markdown(st.session_state['response'])
                 if search_index != "smes":
@@ -109,6 +109,7 @@ if login_token is not None:  # Only execute the app if the user is authenticated
                         st.markdown(f'[{filenm}]({URL})')
                 with st.expander("Question and Answer Context"):
                     st.markdown(st.session_state['context'].replace('$', '\$'))
+                    
 
         except Exception:
             st.error(traceback.format_exc())
