@@ -1,0 +1,9 @@
+code/GenerateQueue
+code/ProcessQueue
+code/DataIngestor
+code/API
+code/Dockerfile
+code/__pycache__
+code/environment.yml
+code/host.json
+code/local.settings.json

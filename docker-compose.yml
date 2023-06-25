@@ -1,0 +1,15 @@
+version: "3.9"
+services:
+  web:
+    image: divyapatel4/webapp:latest
+    ports:
+      - "8080:80"
+    env_file:
+      - .env
+
+  batch:
+    image: divyapatel4/queueproc:latest
+    ports: 
+      - "8081:80"
+    env_file:
+      - .env
