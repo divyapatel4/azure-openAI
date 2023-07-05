@@ -45,11 +45,7 @@ class SentenceSimilarityComparator:
         return matchPercentage
 
     def calculateSimilarityDiffLIB(self, sentence1, sentence2):
-        matchPercentage = 0
-
-        # Calculate match percentage
         matchPercentage = difflib.SequenceMatcher(None, sentence1, sentence2).ratio() * 100
-
         return matchPercentage
 
     def compareSentencesWithSources(self, answer_string, sources_list):
@@ -62,9 +58,17 @@ class SentenceSimilarityComparator:
             best_match_index = -1
 
             for i, source in enumerate(sources_list):
-                similarity = self.calculateSimilarity(sentence, source)
-                if similarity > max_similarity:
-                    max_similarity = similarity
+                source_sentences = re.split('[.!?]', source)
+                source_sentences = [s.strip() for s in source_sentences if s.strip() != '']
+
+                highest_similarity = -1
+                for source_sentence in source_sentences:
+                    similarity = self.calculateSimilarityDiffLIB(sentence, source_sentence)
+                    if similarity > highest_similarity:
+                        highest_similarity = similarity
+
+                if highest_similarity > max_similarity:
+                    max_similarity = highest_similarity
                     best_match_index = i
 
             matches.append((sentence, best_match_index, max_similarity))

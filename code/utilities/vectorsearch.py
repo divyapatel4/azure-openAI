@@ -303,9 +303,6 @@ class AzureSearch(VectorStore):
         docs_and_scores = self.semantic_hybrid_search_with_score(
             query, k=k, filters=kwargs.get('filters', None))
         
-        for doc, score in docs_and_scores:
-            print("DOC : ", doc)
-            print("SCORE : ", score)
             
         return [doc for doc, _ in docs_and_scores]
 
@@ -423,8 +420,7 @@ class AzureSearchVectorStoreRetriever(BaseRetriever, BaseModel):
 
 
     def get_relevant_documents(self, query: str) -> List[Document]:
-        print("search_type", self.search_type)
-        print("query", query)
+        
         if self.search_type == "similarity":
             docs = self.vectorstore.similarity_search(query, k=self.k)
         elif self.search_type == "hybrid":
@@ -436,8 +432,6 @@ class AzureSearchVectorStoreRetriever(BaseRetriever, BaseModel):
         return docs
     
     async def aget_relevant_documents(self, query: str) -> List[Document]:
-        print("search_type", self.search_type)
-        # This method needs to be implemented.
         loop = asyncio.get_running_loop()
         # Use run_in_executor to run get_relevant_documents in a separate thread
         docs = await loop.run_in_executor(None, self.get_relevant_documents, query)

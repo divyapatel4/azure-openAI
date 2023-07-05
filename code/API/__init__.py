@@ -28,7 +28,7 @@ def main(req: azure.functions.HttpRequest) -> str:
     else:
         data["question"], data["response"], data["context"], data["sources"] = llm_helper.get_semantic_answer_lang_chain_exp(question,index, history)
     
-    ## LOG-D output sem-t
+    ## ExDET
     
     # Return answer
     return f'{data}'

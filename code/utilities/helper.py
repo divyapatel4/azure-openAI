@@ -246,9 +246,9 @@ class LLMHelper:
             
         self.blob_client.add_to_table(index, question, result['answer'], self.temperature)
         
-        similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
+        # similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
             
-        return question, result['answer'], context, final_sources , similarity_scores
+        return question, result['answer'], context, final_sources 
 
 
     def get_semantic_answer_lang_chain_exp(self, question,index, chat_history):
@@ -269,11 +269,10 @@ class LLMHelper:
             self.vector_store: RedisExtended = RedisExtended(redis_url=self.vector_store_full_address, index_name=self.index_name, embedding_function=self.embeddings.embed_query)
         
         question_generator = LLMChain(llm=self.llm, prompt=CONDENSE_QUESTION_PROMPT, verbose=False)
-        
+
         doc_chain = load_qa_with_sources_chain(self.llm, chain_type="stuff", verbose=False, prompt=self.prompt)
         chain = ConversationalRetrievalChain(
             retriever=Retriever,
-            # retriever=self.vector_store.as_retriever(),
             question_generator=question_generator,
             combine_docs_chain=doc_chain,
             return_source_documents=True
@@ -307,9 +306,9 @@ class LLMHelper:
         # only keep unique entries in final_sources
         final_sources = [dict(t) for t in {tuple(d.items()) for d in final_sources}]
         
-        similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
+        # similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
             
-        return question, result['answer'], context, final_sources, similarity_scores
+        return question, result['answer'], context, final_sources
 
 
     def get_embeddings_model(self):
