@@ -5,13 +5,28 @@ import mimetypes
 import chardet
 import os
 import json
-
 import azure.functions as func
 import base64 as b64
 from utilities.helper import LLMHelper
 from urllib.parse import quote
+import re
+import concurrent.futures
 
 llm_helper = LLMHelper()
+
+def remove_special_characters(data):
+    emoji_pattern = re.compile(
+        "["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub(r'', data)
 
 def remote_convert_files_and_add_embeddings():
     url = os.getenv('CONVERT_ADD_EMBEDDINGS_URL')
@@ -24,6 +39,23 @@ def remote_convert_files_and_add_embeddings():
             logging.error(f"Error: {response.text}")
     except Exception as e:
         logging.error(e)
+
+def process_pull_requests(project, proj, repo, header,pr):
+    # Create a text file with the filename of the PR ID in the 'PullRequests' folder
+    filename = f"{repo['name']}_{proj['id']}_{repo['id']}.txt"
+    filecontent=""
+    filecontent += f"Author: {remove_special_characters(pr['createdBy']['displayName'])}\n"
+    filecontent += f"E-mail: {remove_special_characters(pr['createdBy']['uniqueName'])}\n"
+    filecontent += f"Task/Work: Pull Request(PR)| Title: {remove_special_characters(pr['title'])}\n"
+    filecontent += f"Repository: {remove_special_characters(repo['name'])}\n"
+    if pr.get('description'):
+        filecontent += f"Description: {remove_special_characters(pr.get('description', 'NA'))}\n"
+    filecontent += f"State: {remove_special_characters(pr['status'])}\n\n"
+    filecontent += "--------------------------------------------------\n\n"
+
+    bytes_data = filecontent.encode('utf-8')
+    blob_url = llm_helper.blob_client.upload_file(bytes_data=bytes_data, file_name=filename, content_type='text/plain', index='smes')
+    llm_helper.blob_client.upsert_blob_metadata('smes', filename, metadata={"converted": "true", "embeddings_added": "false", "index": "smes"})
 
 
 def encode_url(url):
@@ -250,5 +282,56 @@ def main(mytimer: func.TimerRequest) -> None:
     #====================================================================================================
     # Scrap Pull Requests from ADO for all Sustainability projects
     #====================================================================================================
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        for project, header in zip(projects, headers):
+            # Define base url for project
+            project_url = f"https://dev.azure.com/{project}/_apis/projects"
 
+            # Get project data
+            project_response = requests.get(project_url, headers=header)
+            project_data = project_response.json()
+
+            # Traverse through each project
+            for proj in project_data['value']:
+                # Define repositories URL for the project
+                repo_url = f"https://dev.azure.com/{project}/{proj['id']}/_apis/git/repositories"
+
+                # Get repository data
+                repo_response = requests.get(repo_url, headers=header)
+                repo_data = repo_response.json()
+
+                # Traverse through each repository
+                for repo in repo_data['value']:
+                    # Only consider the repository if 'sust' is part of its name
+                    if 'sust' not in repo['name'].lower():
+                        continue
+
+                    print(f"Processing {repo['name']}")
+
+                    # Initialize skip variable to 0
+                    skip = 0
+
+                    while True:
+                        # Define Pull Requests URL for the repository with skip and top parameters
+                        pr_url = f"https://dev.azure.com/{project}/{proj['id']}/_apis/git/repositories/{repo['id']}/pullrequests?api-version=7.0&searchCriteria.status=all&$skip={skip}&$top=100"
+
+                        # Get Pull Request data
+                        pr_response = requests.get(pr_url, headers=header)
+                        pr_data = pr_response.json()
+
+                        # Break the loop if there are no more Pull Requests to fetch
+                        if not pr_data['value']:
+                            break
+
+                        # Process each Pull Request using ThreadPoolExecutor
+                        futures = []
+                        for pr in pr_data['value']:
+                            future = executor.submit(process_pull_requests, project, proj, repo, header, pr)
+                            futures.append(future)
+
+                        # Wait for all futures to complete
+                        concurrent.futures.wait(futures)
+                        
+                        skip += 100
+                        
     remote_convert_files_and_add_embeddings()
