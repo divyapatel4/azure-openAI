@@ -9,6 +9,7 @@ import json
 import azure.functions as func
 import base64 as b64
 from utilities.helper import LLMHelper
+from urllib.parse import quote
 
 llm_helper = LLMHelper()
 
@@ -23,6 +24,22 @@ def remote_convert_files_and_add_embeddings():
             logging.error(f"Error: {response.text}")
     except Exception as e:
         logging.error(e)
+
+
+def encode_url(url):
+    return quote(url, safe='/:')
+
+def encode_colon_in_url(url):
+    # Find the first occurrence of : in the URL
+    colon_index = url.find(':')
+    
+    # If the colon is not found or it is found immediately after the scheme, return the URL unchanged
+    if colon_index == -1 or url[colon_index:colon_index+3] == '://':
+        return url
+    
+    # Otherwise, replace all occurrences of : with %3A
+    return url.replace(':', '%3A')
+
 
 def sanitize_file_name(file_name):
     char_mapping = {
@@ -49,8 +66,7 @@ def sanitize_file_name(file_name):
 def process_page(page, project_name, wiki_id, headers,wiki_name):
     try:
         page_url = page['url']
-        
-
+        page_url = encode_colon_in_url(page_url)
         page_response = requests.get(page_url, headers=headers)
 
         if page_response.status_code == 200:
@@ -65,7 +81,7 @@ def process_page(page, project_name, wiki_id, headers,wiki_name):
             
             if(page_content['path'] != '/'):
                 url = page_content['url'] 
-                url = url +  "?path=" + page_content['path'] + "&includeContent=true&api-version=7.0"
+                url = url + "?path=" + encode_url(page_content['path']) + "&includeContent=true&api-version=7.0"
                 file_name = wiki_name + page_content['path']
                 
                 file_name_meta = file_name
@@ -80,7 +96,7 @@ def process_page(page, project_name, wiki_id, headers,wiki_name):
                     return
 
                 try:
-                    if(content['content'] is not None):
+                    if(content['content'] is not None and content['content'].strip() != ""):
                         file_name = file_name + '.txt'
                         filepath = project_name + '/' + file_name 
                         filepath = filepath.replace('.txt', '')
@@ -123,10 +139,7 @@ def main(mytimer: func.TimerRequest) -> None:
 
     llm_helper = LLMHelper()  
 
-    #====================================================================================================
-    # Fetching Code from ADO for all Sustainability projects
-    #====================================================================================================
-    # Personal Access Tokens
+    # Place the tokens here
     tokens = [
         'je5eweq6ndtcade7suacgyd3blchrtbc4vyrxudfsrrmqj67ytka', 
         'fnchsdtwi2awgxhi4i2p6mzx7mfej4inznp652avlqzdb6s5gv7q', 
@@ -142,74 +155,9 @@ def main(mytimer: func.TimerRequest) -> None:
     # Azure DevOps projects we are interested in
     projects = ['dynamicscrm', 'msazure', 'CarbonNetwork']
 
-    # # Set of programming languages extensions we are interested in
-    # extensions = {'.py', '.java', '.c', '.cpp', '.cs', '.js', '.jsx', '.ts', '.tsx', '.php', '.rb', '.go', '.rs', '.swift','.md'}
-
-    # # Fetch code files from Azure DevOps (ADO) for all Sustainability projects
-    # for project, header in zip(projects, headers):
-    #     try:
-    #         # Define base url for project
-    #         project_url = f"https://dev.azure.com/{project}/_apis/projects"
-
-    #         # Get project data
-    #         project_response = requests.get(project_url, headers=header)
-    #         project_data = project_response.json()
-
-    #         # Traverse through each project
-    #         for proj in project_data['value']:
-    #             print(proj['name'])
-    #             # Define repositories URL for the project
-    #             repo_url = f"https://dev.azure.com/{project}/{proj['id']}/_apis/git/repositories"
-
-    #             # Get repository data
-    #             repo_response = requests.get(repo_url, headers=header)
-    #             repo_data = repo_response.json()
-
-    #             # Traverse through each repository
-    #             for repo in repo_data['value']:
-    #                 # Define items URL for the repository
-    #                 if 'sust' in repo['name'].lower():
-    #                     print("Repo name: " + repo['name'])
-    #                     items_url = f"https://dev.azure.com/{project}/{proj['name']}/_apis/git/repositories/{repo['id']}/items?scopePath=/&recursionLevel=Full"
-
-    #                     # Get items data
-    #                     items_response = requests.get(items_url, headers=header)
-    #                     items_data = items_response.json()
-
-    #                     # Traverse through each item
-    #                     for item in items_data['value']:
-    #                         if item['gitObjectType'] == 'blob' and not any(part.startswith('.') for part in item['path'].split('/')): # If it is a code file and does not start with .
-    #                             file_extension = os.path.splitext(item['path'])[1]
-    #                             if file_extension in extensions:
-    #                                 file_url = f"https://dev.azure.com/{project}/{proj['name']}/_apis/git/repositories/{repo['id']}/items?path={item['path']}&includeContent=true"
-    #                                 file_response = requests.get(file_url, headers=header)
-    #                                 file_content = file_response.content.decode('utf-8', errors='replace')
-
-    #                                 # Define file name
-    #                                 file_name = f"{project}/{proj['name']}/_git/{repo['name']}?path={item['path']}"
-                                    
-    #                                 # Replace special characters and file extension
-    #                                 file_name = file_name.replace('/', '_').replace(':', '_').replace('?', '_')
-    #                                 file_name = f"{file_name}.txt"
-
-    #                                 # Convert content to bytes and upload to blob
-    #                                 bytes_data = file_content.encode('utf-8')
-    #                                 blob_url = llm_helper.blob_client.upload_file(bytes_data=bytes_data, file_name=file_name,content_type='text/plain',index ='code')
-
-    #                                 # Define URL for metadata
-    #                                 URL_for_file = f"https://dev.azure.com/{project}/{proj['name']}/_git/{repo['name']}?path={item['path']}"
-                                    
-    #                                 # Update blob metadata
-    #                                 llm_helper.blob_client.upsert_blob_metadata('code', file_name, {'URL': URL_for_file, 'converted':"true", 'index':'code'})
-
-    #     except Exception as e:
-    #         logging.error(f"Error occurred for project {project}: {e}")
-
     #====================================================================================================
     # Fetching WikiFiles from ADO for all Sustainability projects
-    #====================================================================================================
-    print("Fetching wiki pages...")
-        
+    #====================================================================================================        
     for proj, header in zip(projects, headers):       
 
         try:
@@ -221,6 +169,7 @@ def main(mytimer: func.TimerRequest) -> None:
                 project_name = project['name']
                 project_id = project['id']
                 base_url = f"https://dev.azure.com/{proj}/{project_id}/_apis/wiki/wikis?api-version=7.0"
+                base_url = encode_colon_in_url(base_url)
                 response = requests.get(base_url, headers=header)
                 wiki_data = response.json()
 
@@ -230,6 +179,7 @@ def main(mytimer: func.TimerRequest) -> None:
                     if(wiki_name != 'DTP Solutions.wiki' and proj != 'CarbonNetwork'):
                         continue
                     pages_url = f"https://dev.azure.com/{proj}/{project_id}/_apis/wiki/wikis/{wiki_id}/pages?api-version=7.0&includeContent=true&recursionLevel=Full"
+                    pages_url = encode_colon_in_url(pages_url)
                     pages_response = requests.get(pages_url, headers=header)
 
                     if pages_response.status_code == 200:
@@ -243,25 +193,9 @@ def main(mytimer: func.TimerRequest) -> None:
     #====================================================================================================
     # Fetching Readme files from ADO for all Sustainability projects
     #====================================================================================================
-    llm_helper = LLMHelper()
-    # Personal Access Tokens
-    personal_access_tokens = [
-        'je5eweq6ndtcade7suacgyd3blchrtbc4vyrxudfsrrmqj67ytka', 
-        'fnchsdtwi2awgxhi4i2p6mzx7mfej4inznp652avlqzdb6s5gv7q', 
-        'hcpyus63vw7afgep2c7fzerip35ed4upm5jgrswmstekbmqqncpa'
-    ]
-
-    # Convert the tokens to base64 encoded strings
-    encoded_tokens = [b64.b64encode(bytes(':'+token, 'utf-8')).decode('utf-8') for token in personal_access_tokens]
-
-    # Create authorization headers for each token
-    auth_headers = [{'Authorization': f'Basic {token}'} for token in encoded_tokens]
-
-    # Azure DevOps projects we are interested in
-    target_projects = ['dynamicscrm', 'msazure', 'CarbonNetwork']
 
     # Fetch Readme files from Azure DevOps (ADO) for all Sustainability projects
-    for project, header in zip(target_projects, auth_headers):
+    for project, header in zip(projects, headers):
         try:
             # Define base url for project
             project_url = f"https://dev.azure.com/{project}/_apis/projects"
@@ -303,7 +237,6 @@ def main(mytimer: func.TimerRequest) -> None:
                         readme_content = readme_header + readme_response.content.decode('utf-8', errors='replace')
 
                         URL_for_file = f"https://dev.azure.com/{project}/{proj['name']}/_git/{repo['name']}?path=%2FREADME.md"
-                        print(URL_for_file)
                         
                         file_name_meta = f"{project}/{proj['name']}/_git/{repo['name']}?path=%2FREADME.md"
 
@@ -313,5 +246,9 @@ def main(mytimer: func.TimerRequest) -> None:
 
         except Exception as e:
             logging.error(f"Error occurred for project {project}: {e}")
+            
+    #====================================================================================================
+    # Scrap Pull Requests from ADO for all Sustainability projects
+    #====================================================================================================
 
     remote_convert_files_and_add_embeddings()

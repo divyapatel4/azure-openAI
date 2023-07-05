@@ -96,8 +96,8 @@ class LLMHelper:
         else:
             self.vector_store: RedisExtended = RedisExtended(redis_url=self.vector_store_full_address, index_name=self.index_name, embedding_function=self.embeddings.embed_query)     
         
-        self.k : int = 3 if k is None else k
-        self.smes_k = 8
+        self.k : int = 4 if k is None else k
+        self.smes_k = 25
         self.pdf_parser : AzureFormRecognizerClient = AzureFormRecognizerClient() if pdf_parser is None else pdf_parser
         self.blob_client: AzureBlobStorageClient = AzureBlobStorageClient() if blob_client is None else blob_client
         self.user_agent: UserAgent() = UserAgent()
@@ -124,10 +124,8 @@ class LLMHelper:
             
             if index =='smes':
                 self.text_splitter = TokenTextSplitter(chunk_size=self.chunk_size_smes, chunk_overlap=self.chunk_overlap_smes)
-                # print("Chunk : ", self.chunk_size_smes, "Overlap : ", self.chunk_overlap_smes)
             else:
                 self.text_splitter = TokenTextSplitter(chunk_size=self.chunk_size, chunk_overlap=self.chunk_overlap)
-                # print("Chunk : ", self.chunk_size, "Overlap : ", self.chunk_overlap)
                 
             docs = self.text_splitter.split_documents(documents)
             
@@ -159,7 +157,6 @@ class LLMHelper:
     def convert_file_and_add_embeddings(self, source_url, filename, index,citation_URL, meta_filename):
         
         self.index_name = index 
-        self.prompt = SMES_PROMPT if index == 'smes' else PROMPT 
         
         if self.vector_store_type == "AzureSearch":
             self.vector_store: VectorStore = AzureSearch(azure_cognitive_search_name=self.vector_store_address, azure_cognitive_search_key=self.vector_store_password, index_name=self.index_name, embedding_function=self.embeddings.embed_query)  
@@ -197,7 +194,7 @@ class LLMHelper:
         self.index_name = index
         k = 4
         if index == 'smes':
-            k = 30
+            k = 25
         self.prompt = SMES_PROMPT if index == 'smes' else PROMPT 
 
         
@@ -256,7 +253,7 @@ class LLMHelper:
         search_type = "semantic_hybrid"
         k = 4
         if index == 'smes':
-            k = 30
+            k = 25
         
         self.prompt = SMES_PROMPT if index == 'smes' else PROMPT 
 
@@ -305,9 +302,7 @@ class LLMHelper:
         
         # only keep unique entries in final_sources
         final_sources = [dict(t) for t in {tuple(d.items()) for d in final_sources}]
-        
-        # similarity_scores = self.comparator.compareSentencesWithSources(result['answer'], context_list_sources)
-            
+                    
         return question, result['answer'], context, final_sources
 
 

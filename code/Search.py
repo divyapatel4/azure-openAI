@@ -98,8 +98,7 @@ if login_token is not None:  # Only execute the app if the user is authenticated
 
             if (search_button or question != st.session_state['question']) and question != "":
                 st.session_state['question'] = question
-                st.session_state['question'], st.session_state['response'], st.session_state['context'], sources, referencelines = llm_helper.get_semantic_answer_lang_chain_exp(question , search_index, [])
-                print(referencelines)
+                st.session_state['question'], st.session_state['response'], st.session_state['context'], sources = llm_helper.get_semantic_answer_lang_chain_exp(question , search_index, [])
                 st.markdown("###### Answer:") 
                 st.markdown(st.session_state['response'])
                 if search_index != "smes":

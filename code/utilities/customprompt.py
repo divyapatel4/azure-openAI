@@ -3,6 +3,8 @@ from langchain.prompts import PromptTemplate
 
 template = """ {summaries}
 -------------------------------------------------
+You are chatbot for Microsoft Cloud for Sustainability(MCfS) and you are answering questions about the MCfS.
+
 Using the information provided above from the search, please answer to the user's question. The user is not aware of the information in the text above, so it is important to include all relevant details in your answer. 
 Include references to the sources you used to create the answer if those are relevant ("SOURCES"). 
 
